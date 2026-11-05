@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Photobooth 4 Shots — Demo</title>
+<style>
+body{margin:0;background:#f3efe9;color:#2e2620;font:16px system-ui,-apple-system,sans-serif}
+main{max-width:640px;margin:auto;padding:24px}
+.panel{background:white;border:1px solid #e2d9cc;border-radius:18px;padding:22px;margin-top:18px}
+h1{margin:0 0 6px;font-size:28px}p{color:#635b53;line-height:1.5}
+video{width:100%;aspect-ratio:4/3;background:#28231f;object-fit:cover;border-radius:12px;transform:scaleX(-1)}
+button,select,input{font:inherit}button{border:none;border-radius:10px;background:#29231f;color:white;padding:12px 16px;cursor:pointer;margin:5px 5px 5px 0}
+button:disabled{opacity:.4;cursor:default}.secondary{background:#e8e1d9;color:#312923}
+#preview{max-width:100%;max-height:700px;display:block;margin:15px auto;border-radius:10px}
+#status{font-weight:600;min-height:1.4em}.hint{font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <h1>📸 Photobooth 4 Shots</h1>
+  <p>Chụp 4 lần hoặc chọn 4 ảnh từ máy. Tự ghép thành một ảnh PNG theo bố cục bạn chọn. Đây là bản demo độc lập, không phải filter đã cài vào Locket.</p>
+  <section class="panel">
+    <label for="layout">Kiểu ảnh: </label>
+    <select id="layout"><option value="strip">4 ảnh dọc (Photostrip)</option><option value="grid">4 ảnh 2×2 (phù hợp ảnh vuông)</option></select>
+    <p class="hint">Tuỳ chọn LUT màu .cube: <input id="cube" type="file" accept=".cube,text/plain" /></p>
+    <video id="video" autoplay playsinline muted></video>
+    <div><button id="start">Bật camera</button><button id="capture" disabled>Chụp ảnh</button><button id="reset" class="secondary">Chụp lại</button></div>
+    <p class="hint">Hoặc chọn 4 ảnh có sẵn: <input id="files" type="file" accept="image/*" multiple /></p>
+    <p id="status" role="status">Đã chụp 0/4</p>
+  </section>
+  <section class="panel" id="resultPanel" hidden>
+    <h2>Kết quả</h2><img id="preview" alt="Ảnh photobooth được ghép" />
+    <button id="download">Lưu ảnh PNG</button>
+  </section>
+</main>
+<script src="./photobooth4-locket.js"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  let booth, stream, resultUrl;
+  let cubeText = null;
+  function clearResult(){ if(resultUrl) URL.revokeObjectURL(resultUrl); resultUrl=null; $('resultPanel').hidden=true; }
+  function reset(){
+    clearResult(); booth=Photobooth4.create({layout:$('layout').value,cubeText});
+    $('status').textContent='Đã chụp 0/4'; $('capture').disabled=!stream;
+  }
+  async function addFrame(frame){
+    const r=await booth.addFrame(frame);
+    $('status').textContent='Đã chụp '+r.count+'/4'+(r.complete?' — hoàn thành!':'');
+    if(r.complete){
+      resultUrl=URL.createObjectURL(r.result.blob);
+      $('preview').src=resultUrl;
+      $('resultPanel').hidden=false;
+      $('capture').disabled=true;
+    }
+  }
+  $('layout').addEventListener('change',reset);
+  $('reset').addEventListener('click',reset);
+  $('cube').addEventListener('change',async e=>{
+    try{const file=e.target.files[0];cubeText=file?await file.text():null;reset();}
+    catch(err){$('status').textContent='Lỗi LUT: '+err.message;}
+  });
+  $('start').addEventListener('click',async()=>{
+    try{
+      if(stream) stream.getTracks().forEach(t=>t.stop());
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+      $('video').srcObject=stream;
+      $('capture').disabled=false;
+      $('status').textContent='Đã bật camera. Chụp 4 lần.';
+    }catch(err){$('status').textContent='Không bật được camera: '+err.message+' (cần HTTPS hoặc localhost).';}
+  });
+  $('capture').addEventListener('click',async()=>{
+    const video=$('video');
+    if(!video.videoWidth) return;
+    $('capture').disabled=true;
+    try{
+      await addFrame(video);
+      if(!booth.getState().complete) $('capture').disabled=false;
+    }catch(err){$('status').textContent='Lỗi: '+err.message;$('capture').disabled=false;}
+  });
+  $('files').addEventListener('change',async e=>{
+    try{
+      const files=Array.from(e.target.files);
+      if(files.length!==4) throw new Error('Vui lòng chọn đúng 4 ảnh.');
+      reset();
+      for(const f of files) await addFrame(f);
+    }catch(err){$('status').textContent='Lỗi: '+err.message;}
+  });
+  $('download').addEventListener('click',()=>{
+    if(!resultUrl)return;
+    const a=document.createElement('a');a.href=resultUrl;a.download='photobooth-4-shots.png';a.click();
+  });
+  reset();
+})();
+</script>
+</body>
+</html>
